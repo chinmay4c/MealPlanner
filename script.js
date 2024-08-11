@@ -1,13 +1,20 @@
 document.addEventListener('DOMContentLoaded', () => {
     const weekView = document.querySelector('.week-view');
     const addMealBtn = document.getElementById('add-meal-btn');
-    const printBtn = document.getElementById('print-btn');
+    const aiSuggestBtn = document.getElementById('ai-suggest-btn');
+    const voiceCommandBtn = document.getElementById('voice-command-btn');
+    const darkModeToggle = document.getElementById('dark-mode-toggle');
     const modal = document.getElementById('meal-modal');
     const closeBtn = document.querySelector('.close');
     const mealForm = document.getElementById('meal-form');
     const modalTitle = document.getElementById('modal-title');
+    const gamificationSidebar = document.getElementById('gamification-sidebar');
 
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+    let meals = JSON.parse(localStorage.getItem('meals')) || {};
+    let nutritionChart;
+    let quests;
 
     // Generate day columns
     days.forEach(day => {
@@ -16,29 +23,25 @@ document.addEventListener('DOMContentLoaded', () => {
         dayColumn.innerHTML = `
             <h2>${day.charAt(0).toUpperCase() + day.slice(1)}</h2>
             <ul class="meal-list" id="${day}-list"></ul>
-            <div class="total-calories" id="${day}-calories">Total: 0 cal</div>
         `;
         weekView.appendChild(dayColumn);
     });
 
-    // Initialize Sortable for each day's meal list
-    document.querySelectorAll('.meal-list').forEach(list => {
-        new Sortable(list, {
-            group: 'shared',
-            animation: 150,
-            ghostClass: 'sortable-ghost',
-            onEnd: updateLocalStorage
-        });
-    });
+    // Initialize drag and drop
+    initDragAndDrop();
 
     // Event Listeners
     addMealBtn.addEventListener('click', () => openModal());
+    aiSuggestBtn.addEventListener('click', suggestMeal);
+    voiceCommandBtn.addEventListener('click', startVoiceCommand);
+    darkModeToggle.addEventListener('click', toggleDarkMode);
     closeBtn.addEventListener('click', closeModal);
     mealForm.addEventListener('submit', handleFormSubmit);
-    printBtn.addEventListener('click', printWeekPlan);
 
-    // Load meals from local storage
+    // Load meals and initialize UI
     loadMeals();
+    updateNutritionChart();
+    initializeQuests();
 
     function openModal(meal = null) {
         modalTitle.textContent = meal ? 'Edit Meal' : 'Add Meal';
@@ -46,6 +49,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('meal-id').value = meal.id;
             document.getElementById('meal-name').value = meal.name;
             document.getElementById('meal-calories').value = meal.calories;
+            document.getElementById('meal-protein').value = meal.protein;
+            document.getElementById('meal-carbs').value = meal.carbs;
+            document.getElementById('meal-fat').value = meal.fat;
             document.getElementById('meal-day').value = meal.day;
             document.getElementById('meal-type').value = meal.type;
             document.getElementById('meal-category').value = meal.category || '';
@@ -55,10 +61,20 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('meal-id').value = '';
         }
         modal.style.display = 'block';
+        gsap.from('.modal-content', {duration: 0.5, y: -50, opacity: 0, ease: 'back'});
     }
 
     function closeModal() {
-        modal.style.display = 'none';
+        gsap.to('.modal-content', {
+            duration: 0.5,
+            y: -50,
+            opacity: 0,
+            ease: 'power2.in',
+            onComplete: () => {
+                modal.style.display = 'none';
+                gsap.set('.modal-content', {clearProps: 'all'});
+            }
+        });
     }
 
     function handleFormSubmit(e) {
@@ -67,7 +83,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const meal = {
             id: mealId || Date.now().toString(),
             name: document.getElementById('meal-name').value,
-            calories: document.getElementById('meal-calories').value,
+            calories: parseInt(document.getElementById('meal-calories').value),
+            protein: parseInt(document.getElementById('meal-protein').value),
+            carbs: parseInt(document.getElementById('meal-carbs').value),
+            fat: parseInt(document.getElementById('meal-fat').value),
             day: document.getElementById('meal-day').value,
             type: document.getElementById('meal-type').value,
             category: document.getElementById('meal-category').value,
@@ -82,13 +101,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         closeModal();
         updateLocalStorage();
+        updateNutritionChart();
+        checkQuestProgress();
     }
 
     function addMeal(meal) {
         const mealList = document.getElementById(`${meal.day}-list`);
         const mealItem = createMealElement(meal);
         mealList.appendChild(mealItem);
-        updateDayCalories(meal.day);
+        meals[meal.day] = meals[meal.day] || [];
+        meals[meal.day].push(meal);
+        gsap.from(mealItem, {duration: 0.5, y: 20, opacity: 0, ease: 'back'});
     }
 
     function updateMeal(updatedMeal) {
@@ -98,32 +121,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (oldDay !== updatedMeal.day) {
             const newList = document.getElementById(`${updatedMeal.day}-list`);
             newList.appendChild(mealItem);
-            updateDayCalories(oldDay);
+            meals[oldDay] = meals[oldDay].filter(meal => meal.id !== updatedMeal.id);
+            meals[updatedMeal.day] = meals[updatedMeal.day] || [];
+            meals[updatedMeal.day].push(updatedMeal);
+        } else {
+            const index = meals[oldDay].findIndex(meal => meal.id === updatedMeal.id);
+            meals[oldDay][index] = updatedMeal;
         }
 
-        mealItem.innerHTML = `
-            <h3>${updatedMeal.name}</h3>
-            <p>${updatedMeal.calories} cal | ${updatedMeal.type}</p>
-            ${updatedMeal.category ? `<p>Category: ${updatedMeal.category}</p>` : ''}
-            <div class="meal-actions">
-                <button class="edit-meal"><i class="fas fa-edit"></i></button>
-                <button class="delete-meal"><i class="fas fa-trash"></i></button>
-            </div>
-        `;
-
-        mealItem.dataset.meal = JSON.stringify(updatedMeal);
-        updateDayCalories(updatedMeal.day);
+        updateMealElement(mealItem, updatedMeal);
     }
 
     function createMealElement(meal) {
         const mealItem = document.createElement('li');
         mealItem.classList.add('meal-item');
         mealItem.dataset.id = meal.id;
-        mealItem.dataset.meal = JSON.stringify(meal);
+        updateMealElement(mealItem, meal);
+        return mealItem;
+    }
+
+    function updateMealElement(mealItem, meal) {
         mealItem.innerHTML = `
             <h3>${meal.name}</h3>
-            <p>${meal.calories} cal | ${meal.type}</p>
-            ${meal.category ? `<p>Category: ${meal.category}</p>` : ''}
+            <p>${meal.calories} cal | P: ${meal.protein}g | C: ${meal.carbs}g | F: ${meal.fat}g</p>
+            <p>${meal.type} ${meal.category ? `| ${meal.category}` : ''}</p>
             <div class="meal-actions">
                 <button class="edit-meal"><i class="fas fa-edit"></i></button>
                 <button class="delete-meal"><i class="fas fa-trash"></i></button>
@@ -132,152 +153,126 @@ document.addEventListener('DOMContentLoaded', () => {
 
         mealItem.querySelector('.edit-meal').addEventListener('click', () => openModal(meal));
         mealItem.querySelector('.delete-meal').addEventListener('click', () => deleteMeal(meal.id, meal.day));
-
-        return mealItem;
     }
 
     function deleteMeal(id, day) {
         const mealItem = document.querySelector(`[data-id="${id}"]`);
-        mealItem.remove();
-        updateDayCalories(day);
-        updateLocalStorage();
-    }
-
-    function updateDayCalories(day) {
-        const mealList = document.getElementById(`${day}-list`);
-        const totalCalories = Array.from(mealList.children).reduce((total, mealItem) => {
-            const meal = JSON.parse(mealItem.dataset.meal);
-            return total + parseInt(meal.calories);
-        }, 0);
-        document.getElementById(`${day}-calories`).textContent = `Total: ${totalCalories} cal`;
+        gsap.to(mealItem, {
+            duration: 0.5,
+            x: 100,
+            opacity: 0,
+            ease: 'power2.in',
+            onComplete: () => {
+                mealItem.remove();
+                meals[day] = meals[day].filter(meal => meal.id !== id);
+                updateLocalStorage();
+                updateNutritionChart();
+                checkQuestProgress();
+            }
+        });
     }
 
     function updateLocalStorage() {
-        const meals = {};
-        days.forEach(day => {
-            const mealList = document.getElementById(`${day}-list`);
-            meals[day] = Array.from(mealList.children).map(mealItem => JSON.parse(mealItem.dataset.meal));
-        });
         localStorage.setItem('meals', JSON.stringify(meals));
     }
 
     function loadMeals() {
-        const meals = JSON.parse(localStorage.getItem('meals')) || {};
         for (const [day, dayMeals] of Object.entries(meals)) {
             const mealList = document.getElementById(`${day}-list`);
             dayMeals.forEach(meal => {
                 const mealItem = createMealElement(meal);
                 mealList.appendChild(mealItem);
             });
-            updateDayCalories(day);
         }
     }
 
-    function printWeekPlan() {
-        window.print();
-    }
+    function updateNutritionChart() {
+        const nutritionData = calculateTotalNutrition();
+        const ctx = document.getElementById('nutrition-chart').getContext('2d');
 
-    // Color coding for meal types
-    function applyMealTypeColors() {
-        const mealTypes = {
-            breakfast: '#FFA07A',
-            lunch: '#98FB98',
-            dinner: '#87CEFA',
-            snack: '#DDA0DD'
-        };
-
-        document.querySelectorAll('.meal-item').forEach(mealItem => {
-            const meal = JSON.parse(mealItem.dataset.meal);
-            mealItem.style.borderLeft = `5px solid ${mealTypes[meal.type]}`;
-        });
-    }
-
-    // Apply meal type colors when meals are loaded or added
-    window.addEventListener('load', applyMealTypeColors);
-    const observer = new MutationObserver(applyMealTypeColors);
-    observer.observe(weekView, { childList: true, subtree: true });
-
-    // Implement drag and drop between days
-    document.querySelectorAll('.meal-list').forEach(list => {
-        list.addEventListener('dragover', e => {
-            e.preventDefault();
-            const afterElement = getDragAfterElement(list, e.clientY);
-            const draggable = document.querySelector('.dragging');
-            if (afterElement == null) {
-                list.appendChild(draggable);
-            } else {
-                list.insertBefore(draggable, afterElement);
-            }
-        });
-    });
-
-    function getDragAfterElement(container, y) {
-        const draggableElements = [...container.querySelectorAll('.meal-item:not(.dragging)')];
-
-        return draggableElements.reduce((closest, child) => {
-            const box = child.getBoundingClientRect();
-            const offset = y - box.top - box.height / 2;
-            if (offset < 0 && offset > closest.offset) {
-                return { offset: offset, element: child };
-            } else {
-                return closest;
-            }
-        }, { offset: Number.NEGATIVE_INFINITY }).element;
-    }
-
-    // Implement search functionality
-    const searchInput = document.createElement('input');
-    searchInput.type = 'text';
-    searchInput.placeholder = 'Search meals...';
-    searchInput.classList.add('search-input');
-    document.querySelector('header').insertBefore(searchInput, printBtn);
-
-    searchInput.addEventListener('input', () => {
-        const searchTerm = searchInput.value.toLowerCase();
-        document.querySelectorAll('.meal-item').forEach(mealItem => {
-            const meal = JSON.parse(mealItem.dataset.meal);
-            const isVisible = meal.name.toLowerCase().includes(searchTerm) || 
-                              meal.type.toLowerCase().includes(searchTerm) || 
-                              meal.category.toLowerCase().includes(searchTerm);
-            mealItem.style.display = isVisible ? 'block' : 'none';
-        });
-    });
-
-    // Implement meal statistics
-    function updateMealStatistics() {
-        const stats = {
-            totalCalories: 0,
-            mealCounts: { breakfast: 0, lunch: 0, dinner: 0, snack: 0 },
-            categoryCount: {}
-        };
-
-        document.querySelectorAll('.meal-item').forEach(mealItem => {
-            const meal = JSON.parse(mealItem.dataset.meal);
-            stats.totalCalories += parseInt(meal.calories);
-            stats.mealCounts[meal.type]++;
-            if (meal.category) {
-                stats.categoryCount[meal.category] = (stats.categoryCount[meal.category] || 0) + 1;
-            }
-        });
-
-        const statsContainer = document.createElement('div');
-        statsContainer.classList.add('meal-statistics');
-        statsContainer.innerHTML = `
-            <h3>Weekly Statistics</h3>
-            <p>Total Calories: ${stats.totalCalories}</p>
-            <p>Meal Counts: ${Object.entries(stats.mealCounts).map(([type, count]) => `${type}: ${count}`).join(', ')}</p>
-            <p>Categories: ${Object.entries(stats.categoryCount).map(([category, count]) => `${category}: ${count}`).join(', ')}</p>
-        `;
-
-        const existingStats = document.querySelector('.meal-statistics');
-        if (existingStats) {
-            existingStats.replaceWith(statsContainer);
-        } else {
-            document.querySelector('.container').appendChild(statsContainer);
+        if (nutritionChart) {
+            nutritionChart.destroy();
         }
+
+        nutritionChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Protein', 'Carbs', 'Fat'],
+                datasets: [{
+                    data: [nutritionData.protein, nutritionData.carbs, nutritionData.fat],
+                    backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+
+        document.getElementById('total-calories').querySelector('p').textContent = `${nutritionData.calories} cal`;
+        document.getElementById('protein-intake').querySelector('p').textContent = `${nutritionData.protein}g`;
+        document.getElementById('carb-intake').querySelector('p').textContent = `${nutritionData.carbs}g`;
+        document.getElementById('fat-intake').querySelector('p').textContent = `${nutritionData.fat}g`;
     }
 
-    // Update statistics when meals change
-    new MutationObserver(updateMealStatistics).observe(weekView, { childList: true, subtree: true });
-    window.addEventListener('load', updateMealStatistics);
+    function calculateTotalNutrition() {
+        const totalNutrition = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+        Object.values(meals).flat().forEach(meal => {
+            totalNutrition.calories += meal.calories;
+            totalNutrition.protein += meal.protein;
+            totalNutrition.carbs += meal.carbs;
+            totalNutrition.fat += meal.fat;
+        });
+        return totalNutrition;
+    }
+
+    function initDragAndDrop() {
+        const lists = document.querySelectorAll('.meal-list');
+        lists.forEach(list => {
+            new Sortable(list, {
+                group: 'shared',
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: (evt) => {
+                    const mealId = evt.item.dataset.id;
+                    const oldDay = evt.from.id.replace('-list', '');
+                    const newDay = evt.to.id.replace('-list', '');
+                    if (oldDay !== newDay) {
+                        const mealIndex = meals[oldDay].findIndex(meal => meal.id === mealId);
+                        const [meal] = meals[oldDay].splice(mealIndex, 1);
+                        meal.day = newDay;
+                        meals[newDay] = meals[newDay] || [];
+                        meals[newDay].push(meal);
+                        updateLocalStorage();
+                        updateNutritionChart();
+                        checkQuestProgress();
+                    }
+                }
+            });
+        });
+    }
+
+    function suggestMeal() {
+        // This is a mock AI suggestion. In a real application, you'd use a more sophisticated algorithm or API.
+        const suggestions = [
+            { name: 'Grilled Chicken Salad', calories: 350, protein: 30, carbs: 10, fat: 20 },
+            { name: 'Vegetarian Stir Fry', calories: 300, protein: 15, carbs: 40, fat: 10 },
+            { name: 'Salmon with Roasted Vegetables', calories: 400, protein: 35, carbs: 20, fat: 25 }
+        ];
+
+        const suggestion = suggestions[Math.floor(Math.random() * suggestions.length)];
+        openModal({
+            ...suggestion,
+            id: '',
+            day: days[Math.floor(Math.random() * days.length)],
+            type: ['breakfast', 'lunch', 'dinner'][Math.floor(Math.random() * 3)],
+            category: ''
+        });
+    }
+
 });

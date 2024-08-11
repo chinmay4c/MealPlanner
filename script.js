@@ -1,105 +1,162 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const addMealButton = document.getElementById('add-meal');
-    const mealNameInput = document.getElementById('meal-name');
-    const mealCaloriesInput = document.getElementById('meal-calories');
-    const mealDaySelect = document.getElementById('meal-day');
-    const mealTypeSelect = document.getElementById('meal-type');
+    const weekView = document.querySelector('.week-view');
+    const addMealBtn = document.getElementById('add-meal-btn');
+    const printBtn = document.getElementById('print-btn');
+    const modal = document.getElementById('meal-modal');
+    const closeBtn = document.querySelector('.close');
+    const mealForm = document.getElementById('meal-form');
+    const modalTitle = document.getElementById('modal-title');
 
-    addMealButton.addEventListener('click', addMeal);
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+    // Generate day columns
+    days.forEach(day => {
+        const dayColumn = document.createElement('div');
+        dayColumn.classList.add('day');
+        dayColumn.innerHTML = `
+            <h2>${day.charAt(0).toUpperCase() + day.slice(1)}</h2>
+            <ul class="meal-list" id="${day}-list"></ul>
+            <div class="total-calories" id="${day}-calories">Total: 0 cal</div>
+        `;
+        weekView.appendChild(dayColumn);
+    });
 
     // Initialize Sortable for each day's meal list
     document.querySelectorAll('.meal-list').forEach(list => {
         new Sortable(list, {
+            group: 'shared',
             animation: 150,
-            ghostClass: 'blue-background-class',
+            ghostClass: 'sortable-ghost',
             onEnd: updateLocalStorage
         });
     });
 
+    // Event Listeners
+    addMealBtn.addEventListener('click', () => openModal());
+    closeBtn.addEventListener('click', closeModal);
+    mealForm.addEventListener('submit', handleFormSubmit);
+    printBtn.addEventListener('click', printWeekPlan);
+
     // Load meals from local storage
     loadMeals();
 
-    function addMeal() {
-        const mealName = mealNameInput.value.trim();
-        const mealCalories = mealCaloriesInput.value;
-        const mealDay = mealDaySelect.value;
-        const mealType = mealTypeSelect.value;
+    function openModal(meal = null) {
+        modalTitle.textContent = meal ? 'Edit Meal' : 'Add Meal';
+        if (meal) {
+            document.getElementById('meal-id').value = meal.id;
+            document.getElementById('meal-name').value = meal.name;
+            document.getElementById('meal-calories').value = meal.calories;
+            document.getElementById('meal-day').value = meal.day;
+            document.getElementById('meal-type').value = meal.type;
+            document.getElementById('meal-category').value = meal.category || '';
+            document.getElementById('meal-notes').value = meal.notes || '';
+        } else {
+            mealForm.reset();
+            document.getElementById('meal-id').value = '';
+        }
+        modal.style.display = 'block';
+    }
 
-        if (mealName === '' || mealCalories === '') return;
+    function closeModal() {
+        modal.style.display = 'none';
+    }
 
+    function handleFormSubmit(e) {
+        e.preventDefault();
+        const mealId = document.getElementById('meal-id').value;
         const meal = {
-            id: Date.now(),
-            name: mealName,
-            calories: mealCalories,
-            type: mealType
+            id: mealId || Date.now().toString(),
+            name: document.getElementById('meal-name').value,
+            calories: document.getElementById('meal-calories').value,
+            day: document.getElementById('meal-day').value,
+            type: document.getElementById('meal-type').value,
+            category: document.getElementById('meal-category').value,
+            notes: document.getElementById('meal-notes').value
         };
 
-        const mealList = document.querySelector(`#${mealDay} .meal-list`);
+        if (mealId) {
+            updateMeal(meal);
+        } else {
+            addMeal(meal);
+        }
+
+        closeModal();
+        updateLocalStorage();
+    }
+
+    function addMeal(meal) {
+        const mealList = document.getElementById(`${meal.day}-list`);
         const mealItem = createMealElement(meal);
         mealList.appendChild(mealItem);
+        updateDayCalories(meal.day);
+    }
 
-        updateLocalStorage();
-        resetInputFields();
+    function updateMeal(updatedMeal) {
+        const mealItem = document.querySelector(`[data-id="${updatedMeal.id}"]`);
+        const oldDay = mealItem.closest('.day').id.replace('-list', '');
+        
+        if (oldDay !== updatedMeal.day) {
+            const newList = document.getElementById(`${updatedMeal.day}-list`);
+            newList.appendChild(mealItem);
+            updateDayCalories(oldDay);
+        }
+
+        mealItem.innerHTML = `
+            <h3>${updatedMeal.name}</h3>
+            <p>${updatedMeal.calories} cal | ${updatedMeal.type}</p>
+            ${updatedMeal.category ? `<p>Category: ${updatedMeal.category}</p>` : ''}
+            <div class="meal-actions">
+                <button class="edit-meal"><i class="fas fa-edit"></i></button>
+                <button class="delete-meal"><i class="fas fa-trash"></i></button>
+            </div>
+        `;
+
+        mealItem.dataset.meal = JSON.stringify(updatedMeal);
+        updateDayCalories(updatedMeal.day);
     }
 
     function createMealElement(meal) {
         const mealItem = document.createElement('li');
         mealItem.classList.add('meal-item');
         mealItem.dataset.id = meal.id;
+        mealItem.dataset.meal = JSON.stringify(meal);
         mealItem.innerHTML = `
-            <div class="meal-info">
-                <span>${meal.name} (${meal.type})</span>
-                <span>${meal.calories} calories</span>
-            </div>
+            <h3>${meal.name}</h3>
+            <p>${meal.calories} cal | ${meal.type}</p>
+            ${meal.category ? `<p>Category: ${meal.category}</p>` : ''}
             <div class="meal-actions">
-                <button class="edit-meal">Edit</button>
-                <button class="delete-meal">Delete</button>
+                <button class="edit-meal"><i class="fas fa-edit"></i></button>
+                <button class="delete-meal"><i class="fas fa-trash"></i></button>
             </div>
         `;
 
-        mealItem.querySelector('.delete-meal').addEventListener('click', deleteMeal);
-        mealItem.querySelector('.edit-meal').addEventListener('click', editMeal);
+        mealItem.querySelector('.edit-meal').addEventListener('click', () => openModal(meal));
+        mealItem.querySelector('.delete-meal').addEventListener('click', () => deleteMeal(meal.id, meal.day));
 
         return mealItem;
     }
 
-    function deleteMeal(e) {
-        const mealItem = e.target.closest('.meal-item');
+    function deleteMeal(id, day) {
+        const mealItem = document.querySelector(`[data-id="${id}"]`);
         mealItem.remove();
+        updateDayCalories(day);
         updateLocalStorage();
     }
 
-    function editMeal(e) {
-        const mealItem = e.target.closest('.meal-item');
-        const mealId = mealItem.dataset.id;
-        const mealInfo = mealItem.querySelector('.meal-info');
-        const [name, type] = mealInfo.firstElementChild.textContent.split(' (');
-        const calories = mealInfo.lastElementChild.textContent.split(' ')[0];
-
-        mealNameInput.value = name;
-        mealCaloriesInput.value = calories;
-        mealTypeSelect.value = type.slice(0, -1).toLowerCase();
-
-        mealItem.remove();
-        updateLocalStorage();
+    function updateDayCalories(day) {
+        const mealList = document.getElementById(`${day}-list`);
+        const totalCalories = Array.from(mealList.children).reduce((total, mealItem) => {
+            const meal = JSON.parse(mealItem.dataset.meal);
+            return total + parseInt(meal.calories);
+        }, 0);
+        document.getElementById(`${day}-calories`).textContent = `Total: ${totalCalories} cal`;
     }
 
     function updateLocalStorage() {
         const meals = {};
-        document.querySelectorAll('.day').forEach(day => {
-            const dayId = day.id;
-            meals[dayId] = [];
-            day.querySelectorAll('.meal-item').forEach(mealItem => {
-                const mealInfo = mealItem.querySelector('.meal-info');
-                const [name, type] = mealInfo.firstElementChild.textContent.split(' (');
-                const calories = mealInfo.lastElementChild.textContent.split(' ')[0];
-                meals[dayId].push({
-                    id: mealItem.dataset.id,
-                    name: name,
-                    calories: calories,
-                    type: type.slice(0, -1).toLowerCase()
-                });
-            });
+        days.forEach(day => {
+            const mealList = document.getElementById(`${day}-list`);
+            meals[day] = Array.from(mealList.children).map(mealItem => JSON.parse(mealItem.dataset.meal));
         });
         localStorage.setItem('meals', JSON.stringify(meals));
     }
@@ -107,18 +164,33 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadMeals() {
         const meals = JSON.parse(localStorage.getItem('meals')) || {};
         for (const [day, dayMeals] of Object.entries(meals)) {
-            const mealList = document.querySelector(`#${day} .meal-list`);
+            const mealList = document.getElementById(`${day}-list`);
             dayMeals.forEach(meal => {
                 const mealItem = createMealElement(meal);
                 mealList.appendChild(mealItem);
             });
+            updateDayCalories(day);
         }
     }
 
-    function resetInputFields() {
-        mealNameInput.value = '';
-        mealCaloriesInput.value = '';
-        mealDaySelect.selectedIndex = 0;
-        mealTypeSelect.selectedIndex = 0;
+    function printWeekPlan() {
+        window.print();
     }
+
+    // Color coding for meal types
+    function applyMealTypeColors() {
+        const mealTypes = {
+            breakfast: '#FFA07A',
+            lunch: '#98FB98',
+            dinner: '#87CEFA',
+            snack: '#DDA0DD'
+        };
+
+        document.querySelectorAll('.meal-item').forEach(mealItem => {
+            const meal = JSON.parse(mealItem.dataset.meal);
+            mealItem.style.borderLeft = `5px solid ${mealTypes[meal.type]}`;
+        });
+    }
+
+   
 });

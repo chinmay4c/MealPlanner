@@ -275,4 +275,166 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function startVoiceCommand() {
+        if ('webkitSpeechRecognition' in window) {
+            const recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                voiceCommandBtn.classList.add('listening');
+                voiceCommandBtn.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+            };
+
+            recognition.onresult = (event) => {
+                const command = event.results[0][0].transcript.toLowerCase();
+                processVoiceCommand(command);
+            };
+
+            recognition.onend = () => {
+                voiceCommandBtn.classList.remove('listening');
+                voiceCommandBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+            };
+
+            recognition.start();
+        } else {
+            alert('Speech recognition is not supported in your browser.');
+        }
+    }
+
+    function processVoiceCommand(command) {
+        const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
+        const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+        const addMealRegex = /add\s+(.+)\s+for\s+(breakfast|lunch|dinner|snack)\s+on\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i;
+        const match = command.match(addMealRegex);
+
+        if (match) {
+            const [, mealName, mealType, day] = match;
+            openModal({
+                id: '',
+                name: mealName,
+                calories: 0,
+                protein: 0,
+                carbs: 0,
+                fat: 0,
+                day: day.toLowerCase(),
+                type: mealType.toLowerCase(),
+                category: ''
+            });
+        } else {
+            alert('Sorry, I didn\'t understand that command. Try saying "Add chicken salad for lunch on Monday"');
+        }
+    }
+
+    function toggleDarkMode() {
+        document.body.classList.toggle('dark-mode');
+        darkModeToggle.innerHTML = document.body.classList.contains('dark-mode') 
+            ? '<i class="fas fa-sun"></i>' 
+            : '<i class="fas fa-moon"></i>';
+    }
+
+    function initializeQuests() {
+        quests = [
+            { id: 'quest1', name: 'Protein Champion', goal: 150, progress: 0, unit: 'g' },
+            { id: 'quest2', name: 'Veggie Lover', goal: 7, progress: 0, unit: 'meals' },
+            { id: 'quest3', name: 'Meal Planner Extraordinaire', goal: 21, progress: 0, unit: 'meals' }
+        ];
+
+        const questList = document.getElementById('quest-list');
+        quests.forEach(quest => {
+            const questItem = document.createElement('li');
+            questItem.classList.add('quest-item');
+            questItem.innerHTML = `
+                <h3>${quest.name}</h3>
+                <p>Progress: <span id="${quest.id}-progress">0</span>/${quest.goal} ${quest.unit}</p>
+                <div class="progress-bar">
+                    <div class="progress-bar-fill" id="${quest.id}-progress-fill" style="width: 0%"></div>
+                </div>
+            `;
+            questList.appendChild(questItem);
+        });
+
+        checkQuestProgress();
+    }
+
+    function checkQuestProgress() {
+        const totalNutrition = calculateTotalNutrition();
+        const totalMeals = Object.values(meals).flat().length;
+        const veggieMeals = Object.values(meals).flat().filter(meal => meal.category === 'vegetarian' || meal.category === 'vegan').length;
+
+        quests[0].progress = totalNutrition.protein;
+    quests[1].progress = veggieMeals;
+    quests[2].progress = totalMeals;
+
+    quests.forEach(quest => {
+        const progressElement = document.getElementById(`${quest.id}-progress`);
+        const progressFillElement = document.getElementById(`${quest.id}-progress-fill`);
+        const progressPercentage = Math.min((quest.progress / quest.goal) * 100, 100);
+
+        progressElement.textContent = quest.progress;
+        progressFillElement.style.width = `${progressPercentage}%`;
+
+        if (quest.progress >= quest.goal) {
+            showQuestCompletionNotification(quest);
+        }
+    });
+}
+
+function showQuestCompletionNotification(quest) {
+    const notification = document.createElement('div');
+    notification.classList.add('quest-notification');
+    notification.innerHTML = `
+        <h3>Quest Completed!</h3>
+        <p>${quest.name}</p>
+    `;
+    document.body.appendChild(notification);
+
+    gsap.from(notification, {
+        duration: 0.5,
+        y: 50,
+        opacity: 0,
+        ease: 'back',
+        onComplete: () => {
+            setTimeout(() => {
+                gsap.to(notification, {
+                    duration: 0.5,
+                    y: 50,
+                    opacity: 0,
+                    ease: 'power2.in',
+                    onComplete: () => notification.remove()
+                });
+            }, 3000);
+        }
+    });
+}
+
+// Add event listener to open gamification sidebar
+const openSidebarBtn = document.createElement('button');
+openSidebarBtn.id = 'open-sidebar-btn';
+openSidebarBtn.innerHTML = '<i class="fas fa-trophy"></i>';
+openSidebarBtn.addEventListener('click', toggleGamificationSidebar);
+document.body.appendChild(openSidebarBtn);
+
+function toggleGamificationSidebar() {
+    gamificationSidebar.classList.toggle('open');
+}
+
+// Initialize the application
+loadMeals();
+updateNutritionChart();
+initializeQuests();
+
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+                console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(err => {
+                console.log('ServiceWorker registration failed: ', err);
+            });
+    });
+}
 });

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meal Planner</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Meal Planner</h1>
+        <div class="meal-input">
+            <input type="text" id="meal-name" placeholder="Enter meal name">
+            <select id="meal-type">
+                <option value="breakfast">Breakfast</option>
+                <option value="lunch">Lunch</option>
+                <option value="dinner">Dinner</option>
+            </select>
+            <button id="add-meal">Add Meal</button>
+        </div>
+        <div class="meal-list">
+            <h2>Breakfast</h2>
+            <ul id="breakfast-list"></ul>
+            <h2>Lunch</h2>
+            <ul id="lunch-list"></ul>
+            <h2>Dinner</h2>
+            <ul id="dinner-list"></ul>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

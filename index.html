@@ -5,12 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Meal Planner</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
 </head>
 <body>
     <div class="container">
         <h1>Meal Planner</h1>
         <div class="meal-input">
             <input type="text" id="meal-name" placeholder="Enter meal name">
+            <input type="number" id="meal-calories" placeholder="Calories">
+            <select id="meal-day">
+                <option value="monday">Monday</option>
+                <option value="tuesday">Tuesday</option>
+                <option value="wednesday">Wednesday</option>
+                <option value="thursday">Thursday</option>
+                <option value="friday">Friday</option>
+                <option value="saturday">Saturday</option>
+                <option value="sunday">Sunday</option>
+            </select>
             <select id="meal-type">
                 <option value="breakfast">Breakfast</option>
                 <option value="lunch">Lunch</option>
@@ -18,13 +29,35 @@
             </select>
             <button id="add-meal">Add Meal</button>
         </div>
-        <div class="meal-list">
-            <h2>Breakfast</h2>
-            <ul id="breakfast-list"></ul>
-            <h2>Lunch</h2>
-            <ul id="lunch-list"></ul>
-            <h2>Dinner</h2>
-            <ul id="dinner-list"></ul>
+        <div class="week-view">
+            <div class="day" id="monday">
+                <h2>Monday</h2>
+                <ul class="meal-list"></ul>
+            </div>
+            <div class="day" id="tuesday">
+                <h2>Tuesday</h2>
+                <ul class="meal-list"></ul>
+            </div>
+            <div class="day" id="wednesday">
+                <h2>Wednesday</h2>
+                <ul class="meal-list"></ul>
+            </div>
+            <div class="day" id="thursday">
+                <h2>Thursday</h2>
+                <ul class="meal-list"></ul>
+            </div>
+            <div class="day" id="friday">
+                <h2>Friday</h2>
+                <ul class="meal-list"></ul>
+            </div>
+            <div class="day" id="saturday">
+                <h2>Saturday</h2>
+                <ul class="meal-list"></ul>
+            </div>
+            <div class="day" id="sunday">
+                <h2>Sunday</h2>
+                <ul class="meal-list"></ul>
+            </div>
         </div>
     </div>
     <script src="script.js"></script>

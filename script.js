@@ -192,5 +192,92 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-   
+    // Apply meal type colors when meals are loaded or added
+    window.addEventListener('load', applyMealTypeColors);
+    const observer = new MutationObserver(applyMealTypeColors);
+    observer.observe(weekView, { childList: true, subtree: true });
+
+    // Implement drag and drop between days
+    document.querySelectorAll('.meal-list').forEach(list => {
+        list.addEventListener('dragover', e => {
+            e.preventDefault();
+            const afterElement = getDragAfterElement(list, e.clientY);
+            const draggable = document.querySelector('.dragging');
+            if (afterElement == null) {
+                list.appendChild(draggable);
+            } else {
+                list.insertBefore(draggable, afterElement);
+            }
+        });
+    });
+
+    function getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.meal-item:not(.dragging)')];
+
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    // Implement search functionality
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Search meals...';
+    searchInput.classList.add('search-input');
+    document.querySelector('header').insertBefore(searchInput, printBtn);
+
+    searchInput.addEventListener('input', () => {
+        const searchTerm = searchInput.value.toLowerCase();
+        document.querySelectorAll('.meal-item').forEach(mealItem => {
+            const meal = JSON.parse(mealItem.dataset.meal);
+            const isVisible = meal.name.toLowerCase().includes(searchTerm) || 
+                              meal.type.toLowerCase().includes(searchTerm) || 
+                              meal.category.toLowerCase().includes(searchTerm);
+            mealItem.style.display = isVisible ? 'block' : 'none';
+        });
+    });
+
+    // Implement meal statistics
+    function updateMealStatistics() {
+        const stats = {
+            totalCalories: 0,
+            mealCounts: { breakfast: 0, lunch: 0, dinner: 0, snack: 0 },
+            categoryCount: {}
+        };
+
+        document.querySelectorAll('.meal-item').forEach(mealItem => {
+            const meal = JSON.parse(mealItem.dataset.meal);
+            stats.totalCalories += parseInt(meal.calories);
+            stats.mealCounts[meal.type]++;
+            if (meal.category) {
+                stats.categoryCount[meal.category] = (stats.categoryCount[meal.category] || 0) + 1;
+            }
+        });
+
+        const statsContainer = document.createElement('div');
+        statsContainer.classList.add('meal-statistics');
+        statsContainer.innerHTML = `
+            <h3>Weekly Statistics</h3>
+            <p>Total Calories: ${stats.totalCalories}</p>
+            <p>Meal Counts: ${Object.entries(stats.mealCounts).map(([type, count]) => `${type}: ${count}`).join(', ')}</p>
+            <p>Categories: ${Object.entries(stats.categoryCount).map(([category, count]) => `${category}: ${count}`).join(', ')}</p>
+        `;
+
+        const existingStats = document.querySelector('.meal-statistics');
+        if (existingStats) {
+            existingStats.replaceWith(statsContainer);
+        } else {
+            document.querySelector('.container').appendChild(statsContainer);
+        }
+    }
+
+    // Update statistics when meals change
+    new MutationObserver(updateMealStatistics).observe(weekView, { childList: true, subtree: true });
+    window.addEventListener('load', updateMealStatistics);
 });
